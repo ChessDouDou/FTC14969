@@ -132,7 +132,7 @@ public class CraterAutonomous extends LinearOpMode {
             // Step 1:  Move Down to Ground
             robot.lift.setPower(1);
             runtime.reset();
-            while (opModeIsActive() && (runtime.seconds() < 2.7)) {
+            while (opModeIsActive() && (runtime.seconds() < 2.75)) {
                 telemetry.addData("Path", "Leg 1: %2.5f S Elapsed", runtime.seconds());
                 telemetry.update();
             }
@@ -239,7 +239,36 @@ public class CraterAutonomous extends LinearOpMode {
                         }
                         telemetry.addData("%2.5f", runtime.seconds());
                         telemetry.update();
-                        if (runtime.seconds() > 10){
+                        if (runtime.seconds() > 2){
+                            robot.FLMotor.setPower(1);
+                            robot.FRMotor.setPower(1);
+                            robot.BLMotor.setPower(1);
+                            robot.BRMotor.setPower(1);
+                            while (opModeIsActive() && (runtime.seconds() < 2.05)) {
+                                telemetry.addData("Path", "Leg 1: %2.5f S Elapsed; Center", runtime.seconds());
+                                telemetry.addData("# Object Detected", updatedRecognitions.size());
+                                telemetry.update();
+                            }
+                            robot.FLMotor.setPower(0);
+                            robot.FRMotor.setPower(0);
+                            robot.BLMotor.setPower(0);
+                            robot.BRMotor.setPower(0);
+
+                            robot.FLMotor.setPower(-1);
+                            robot.FRMotor.setPower(-1);
+                            robot.BLMotor.setPower(-1);
+                            robot.BRMotor.setPower(-1);
+                            while (opModeIsActive() && (runtime.seconds() < 2.15)) {
+                                telemetry.addData("Path", "Leg 2: %2.5f S Elapsed; Center", runtime.seconds());
+                                telemetry.addData("# Object Detected", updatedRecognitions.size());
+                                telemetry.update();
+                            }
+                            robot.FLMotor.setPower(0);
+                            robot.FRMotor.setPower(0);
+                            robot.BLMotor.setPower(0);
+                            robot.BRMotor.setPower(0);
+                        }
+                        if (runtime.seconds() > 8){
                             runtime.reset();
                             right();
                         }
@@ -373,7 +402,7 @@ public class CraterAutonomous extends LinearOpMode {
         robot.BLMotor.setPower(1);
         robot.BRMotor.setPower(1);
         runtime.reset();
-        while (opModeIsActive() && (runtime.seconds() < 1)) {
+        while (opModeIsActive() && (runtime.seconds() < 0.5)) {
             telemetry.addData("Path", "Leg 4: %2.5f S Elapsed; Left", runtime.seconds());
             telemetry.update();
         }
@@ -443,7 +472,7 @@ public class CraterAutonomous extends LinearOpMode {
         robot.BLMotor.setPower(1);
         robot.BRMotor.setPower(1);
         runtime.reset();
-        while (opModeIsActive() && (runtime.seconds() < 1)) {
+        while (opModeIsActive() && (runtime.seconds() < 0.5)) {
             telemetry.addData("Path", "Leg 4: %2.5f S Elapsed; Right", runtime.seconds());
             telemetry.update();
         }
