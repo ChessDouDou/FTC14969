@@ -1,0 +1,607 @@
+/* Copyright (c) 2018 FIRST. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted (subject to the limitations in the disclaimer below) provided that
+ * the following conditions are met:
+ *
+ * Redistributions of source code must retain the above copyright notice, this list
+ * of conditions and the following disclaimer.
+ *
+ * Redistributions in binary form must reproduce the above copyright notice, this
+ * list of conditions and the following disclaimer in the documentation and/or
+ * other materials provided with the distribution.
+ *
+ * Neither the name of FIRST nor the names of its contributors may be used to endorse or
+ * promote products derived from this software without specific prior written permission.
+ *
+ * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
+ * LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+package org.firstinspires.ftc.teamcode;
+
+import android.app.Activity;
+import android.graphics.Color;
+import android.view.View;
+
+import com.qualcomm.hardware.rev.Rev2mDistanceSensor;
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.util.ElapsedTime;
+
+import java.util.List;
+import org.firstinspires.ftc.robotcore.external.ClassFactory;
+import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.VuforiaLocalizer;
+import org.firstinspires.ftc.robotcore.external.navigation.VuforiaLocalizer.CameraDirection;
+import org.firstinspires.ftc.robotcore.external.tfod.TFObjectDetector;
+import org.firstinspires.ftc.robotcore.external.tfod.Recognition;
+
+/**
+ * This 2018-2019 OpMode illustrates the basics of using the TensorFlow Object Detection API to
+ * determine the position of the gold and silver minerals.
+ *
+ * Use Android Studio to Copy this Class, and Paste it into your team's code folder with a new name.
+ * Remove or comment out the @Disabled line to add this opmode to the Driver Station OpMode list.
+ *
+ * IMPORTANT: In order to use this OpMode, you need to obtain your own Vuforia license key as
+ * is explained below.
+ */
+@Autonomous(name = "DepotAutonomous", group = "Concept")
+//@Disabled
+public class DepotAutonomous extends LinearOpMode {
+    private static final String TFOD_MODEL_ASSET = "RoverRuckus.tflite";
+    private static final String LABEL_GOLD_MINERAL = "Gold Mineral";
+    private static final String LABEL_SILVER_MINERAL = "Silver Mineral";
+
+    HardwareDrive robot = new HardwareDrive();   // Use a Pushbot's hardware
+    private ElapsedTime runtime = new ElapsedTime();
+
+    /*
+     * IMPORTANT: You need to obtain your own license key to use Vuforia. The string below with which
+     * 'parameters.vuforiaLicenseKey' is initialized is for illustration only, and will not function.
+     * A Vuforia 'Development' license key, can be obtained free of charge from the Vuforia developer
+     * web site at https://developer.vuforia.com/license-manager.
+     *
+     * Vuforia license keys are always 380 characters long, and look as if they contain mostly
+     * random data. As an example, here is a example of a fragment of a valid key:
+     *      ... yIgIzTqZ4mWjk9wd3cZO9T1axEqzuhxoGlfOOI2dRzKS4T0hQ8kT ...
+     * Once you've obtained a license key, copy the string from the Vuforia web site
+     * and paste it in to your code on the next line, between the double quotes.
+     */
+    private static final String VUFORIA_KEY = "ARjW6VD/////AAAAGbCMKpMCSEgSunPcA5cUQkuEKymuh9/mOQ5b+ngfYCdx3gPONkD3mscU39FUD7mRQRZSRZpjHZfohKwL2PYsVZrBcTlaY1JcJ9J5orZKqTxxy68irqEBuQkkfG72xEEPYuNq+yEJCNzYKhx3wFGqUV1H05Z1fFJa1ZiWfe4Tn9aO2Yf5AIkYCMz4K75LFU3ZM1wCgz9ubLhxZH2BWF9X0rhvnhZS2rnLHkxm+C+xzRbs2ZoGCOpDRb3Dy0iMG2y4Ve9/AApZQ+6sgSwlc9liA5jZ0QyT0dLqyfaoXwNxPqzBjhOj3FltEHxrWPdpOQm6B8BDC9Kv+BShnpi6g3yhf+msI3Qeqsns/nm6DrGF5zum";
+
+    /**
+     * {@link #vuforia} is the variable we will use to store our instance of the Vuforia
+     * localization engine.
+     */
+    private VuforiaLocalizer vuforia;
+
+    /**
+     * {@link #tfod} is the variable we will use to store our instance of the Tensor Flow Object
+     * Detection engine.
+     */
+    private TFObjectDetector tfod;
+
+    @Override
+    public void runOpMode() {
+        // The TFObjectDetector uses the camera frames from the VuforiaLocalizer, so we create that
+        // first.
+        robot.init(hardwareMap);
+
+        float hsvValues[] = {0F, 0F, 0F};
+
+        final float values[] = hsvValues;
+
+        final double SCALE_FACTOR = 255;
+
+        int relativeLayoutId = hardwareMap.appContext.getResources().getIdentifier("RelativeLayout", "id", hardwareMap.appContext.getPackageName());
+        final View relativeLayout = ((Activity) hardwareMap.appContext).findViewById(relativeLayoutId);
+
+        Color.RGBToHSV((int) (robot.sensorColor.red() * SCALE_FACTOR),
+                (int) (robot.sensorColor.green() * SCALE_FACTOR),
+                (int) (robot.sensorColor.blue() * SCALE_FACTOR),
+                hsvValues);
+
+        initVuforia();
+
+        if (ClassFactory.getInstance().canCreateTFObjectDetector()) {
+            initTfod();
+        } else {
+            telemetry.addData("Sorry!", "This device is not compatible with TFOD");
+        }
+
+        /** Wait for the game to begin */
+        telemetry.addData(">", "Press Play to start tracking");
+        telemetry.update();
+        waitForStart();
+
+        if (opModeIsActive()) {
+
+            // Step 1:  Move Down to Ground
+            robot.lift.setPower(1);
+            runtime.reset();
+            while (opModeIsActive() && (runtime.seconds() < 2.75)) {
+                telemetry.addData("Path", "Leg 1: %2.5f S Elapsed", runtime.seconds());
+                telemetry.update();
+            }
+            robot.lift.setPower(0);
+            sleep(1000);
+
+            // Step 2:  Turn for 0.6 seconds
+            robot.FLMotor.setPower(1);
+            robot.FRMotor.setPower(-1);
+            robot.BLMotor.setPower(1);
+            robot.BRMotor.setPower(-1);
+            runtime.reset();
+            while (opModeIsActive() && (runtime.seconds() < 0.6)) {
+                telemetry.addData("Path", "Leg 2: %2.5f S Elapsed", runtime.seconds());
+                telemetry.update();
+            }
+            robot.FLMotor.setPower(0);
+            robot.FRMotor.setPower(0);
+            robot.BLMotor.setPower(0);
+            robot.BRMotor.setPower(0);
+            sleep(1000);
+
+            robot.lift.setPower(-1);
+            runtime.reset();
+            while (opModeIsActive() && (runtime.seconds() < 1)) {
+                telemetry.addData("Path", "Leg 1: %2.5f S Elapsed", runtime.seconds());
+                telemetry.update();
+            }
+            robot.lift.setPower(0);
+            sleep(1000);
+
+            /** Activate Tensor Flow Object Detection. */
+            if (tfod != null) {
+                tfod.activate();
+            }
+
+            while (opModeIsActive()) {
+                if (tfod != null) {
+                    // getUpdatedRecognitions() will return null if no new information is available since
+                    // the last time that call was made.
+                    List<Recognition> updatedRecognitions = tfod.getUpdatedRecognitions();
+                    if (updatedRecognitions != null) {
+                        telemetry.addData("# Object Detected", updatedRecognitions.size());
+                        if (updatedRecognitions.size() == 3) {
+                            int goldMineralX = -1;
+                            int silverMineral1X = -1;
+                            int silverMineral2X = -1;
+                            for (Recognition recognition : updatedRecognitions) {
+                                if (recognition.getLabel().equals(LABEL_GOLD_MINERAL)) {
+                                    goldMineralX = (int) recognition.getLeft();
+                                } else if (silverMineral1X == -1) {
+                                    silverMineral1X = (int) recognition.getLeft();
+                                } else {
+                                    silverMineral2X = (int) recognition.getLeft();
+                                }
+                            }
+                            if (goldMineralX != -1 && silverMineral1X != -1 && silverMineral2X != -1) {
+                                if (goldMineralX < silverMineral1X && goldMineralX < silverMineral2X) {
+                                    telemetry.addData("Gold Mineral Position", "Left");
+                                    left();
+                                    tfod.deactivate();
+                                } else if (goldMineralX > silverMineral1X && goldMineralX > silverMineral2X) {
+                                    telemetry.addData("Gold Mineral Position", "Right");
+                                    right();
+                                    tfod.deactivate();
+                                } else {
+                                    telemetry.addData("Gold Mineral Position", "Center");
+                                    center();
+                                    tfod.deactivate();
+                                }
+                            }
+                        }
+                        telemetry.update();
+                        if (updatedRecognitions.size() == 2) {
+                            int goldMineralX = -1;
+                            int silverMineral1X = -1;
+                            int silverMineral2X = -1;
+                            for (Recognition recognition : updatedRecognitions) {
+                                if (recognition.getLabel().equals(LABEL_GOLD_MINERAL)) {
+                                    goldMineralX = (int) recognition.getLeft();
+                                } else if (silverMineral1X == -1) {
+                                    silverMineral1X = (int) recognition.getLeft();
+                                } else {
+                                    silverMineral2X = (int) recognition.getLeft();
+                                }
+                            }
+                            if (goldMineralX == -1) {
+                                telemetry.addData("Gold Mineral Position", "Right");
+                                right();
+                                tfod.deactivate();
+                            }
+                            if (goldMineralX != -1) {
+                                if (goldMineralX > silverMineral1X) {
+                                    telemetry.addData("Gold Mineral Position", "Left");
+                                    left();
+                                    tfod.deactivate();
+                                } else {
+                                    telemetry.addData("Gold Mineral Position", "Center");
+                                    center();
+                                    tfod.deactivate();
+                                }
+                            }
+                            telemetry.update();
+                        }
+                        telemetry.addData("%2.5f", runtime.seconds());
+                        telemetry.update();
+                        if (runtime.seconds() > 2){
+                            robot.FLMotor.setPower(1);
+                            robot.FRMotor.setPower(1);
+                            robot.BLMotor.setPower(1);
+                            robot.BRMotor.setPower(1);
+                            while (opModeIsActive() && (runtime.seconds() < 2.05)) {
+                                telemetry.addData("Path", "Leg 1: %2.5f S Elapsed; Center", runtime.seconds());
+                                telemetry.update();
+                            }
+                            robot.FLMotor.setPower(0);
+                            robot.FRMotor.setPower(0);
+                            robot.BLMotor.setPower(0);
+                            robot.BRMotor.setPower(0);
+
+                            robot.FLMotor.setPower(-1);
+                            robot.FRMotor.setPower(-1);
+                            robot.BLMotor.setPower(-1);
+                            robot.BRMotor.setPower(-1);
+                            while (opModeIsActive() && (runtime.seconds() < 2.15)) {
+                                telemetry.addData("Path", "Leg 2: %2.5f S Elapsed; Center", runtime.seconds());
+                                telemetry.update();
+                            }
+                            robot.FLMotor.setPower(0);
+                            robot.FRMotor.setPower(0);
+                            robot.BLMotor.setPower(0);
+                            robot.BRMotor.setPower(0);
+                        }
+                        if (runtime.seconds() > 8){
+                            runtime.reset();
+                            right();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Initialize the Vuforia localization engine.
+     */
+    private void initVuforia() {
+        /*
+         * Configure Vuforia by creating a Parameter object, and passing it to the Vuforia engine.
+         */
+        VuforiaLocalizer.Parameters parameters = new VuforiaLocalizer.Parameters();
+
+        parameters.vuforiaLicenseKey = VUFORIA_KEY;
+        parameters.cameraDirection = CameraDirection.BACK;
+
+        //  Instantiate the Vuforia engine
+        vuforia = ClassFactory.getInstance().createVuforia(parameters);
+
+        // Loading trackables is not necessary for the Tensor Flow Object Detection engine.
+    }
+
+    /**
+     * Initialize the Tensor Flow Object Detection engine.
+     */
+    private void initTfod() {
+        int tfodMonitorViewId = hardwareMap.appContext.getResources().getIdentifier(
+                "tfodMonitorViewId", "id", hardwareMap.appContext.getPackageName());
+        TFObjectDetector.Parameters tfodParameters = new TFObjectDetector.Parameters(tfodMonitorViewId);
+        tfod = ClassFactory.getInstance().createTFObjectDetector(tfodParameters, vuforia);
+        tfod.loadModelFromAsset(TFOD_MODEL_ASSET, LABEL_GOLD_MINERAL, LABEL_SILVER_MINERAL);
+    }
+
+    private void center() {
+        // Step 1:  Turn back
+        robot.flap.setPower(0.3);
+        robot.FLMotor.setPower(-1);
+        robot.FRMotor.setPower(1);
+        robot.BLMotor.setPower(-1);
+        robot.BRMotor.setPower(1);
+        runtime.reset();
+        while (opModeIsActive() && (runtime.seconds() < 0.6)) {
+            telemetry.addData("Path", "Leg 1: %2.5f S Elapsed; Center", runtime.seconds());
+            telemetry.update();
+        }
+        robot.FLMotor.setPower(0);
+        robot.FRMotor.setPower(0);
+        robot.BLMotor.setPower(0);
+        robot.BRMotor.setPower(0);
+        sleep(1000);
+
+        // Step 2:  Forward for 2 seconds
+        robot.flap.setPower(0.3);
+        robot.FLMotor.setPower(1);
+        robot.FRMotor.setPower(1);
+        robot.BLMotor.setPower(1);
+        robot.BRMotor.setPower(1);
+        runtime.reset();
+        while (opModeIsActive() && (runtime.seconds() < 1.5)) {
+            telemetry.addData("Path", "Leg 2: %2.5f S Elapsed; Center", runtime.seconds());
+            telemetry.update();
+        }
+        robot.FLMotor.setPower(0);
+        robot.FRMotor.setPower(0);
+        robot.BLMotor.setPower(0);
+        robot.BRMotor.setPower(0);
+        sleep(1000);
+
+        // Step 3:  Flap down
+        robot.flap.setPower(-0.5);
+        runtime.reset();
+        while (opModeIsActive() && (runtime.seconds() < 1)) {
+            telemetry.addData("Path", "Leg 3: %2.5f S Elapsed; Center", runtime.seconds());
+            telemetry.update();
+        }
+        robot.flap.setPower(0);
+        sleep(1000);
+
+        // Step 4:  Team marker out
+        robot.sweep.setPower(-1);
+        runtime.reset();
+        while (opModeIsActive() && (runtime.seconds() < 0.3)) {
+            telemetry.addData("Path", "Leg 3: %2.5f S Elapsed; Center", runtime.seconds());
+            telemetry.update();
+        }
+        robot.sweep.setPower(0);
+        sleep(1000);
+
+        // Step 5:  Flap up
+        robot.flap.setPower(1);
+        runtime.reset();
+        while (opModeIsActive() && (runtime.seconds() < 0.5)) {
+            telemetry.addData("Path", "Leg 5: %2.5f S Elapsed; Center", runtime.seconds());
+            telemetry.update();
+        }
+        robot.flap.setPower(0);
+        sleep(1000);
+    }
+
+    private void left() {
+        // Step 1:  Turn facing gold cube
+        robot.flap.setPower(0.3);
+        robot.FLMotor.setPower(-1);
+        robot.FRMotor.setPower(1);
+        robot.BLMotor.setPower(-1);
+        robot.BRMotor.setPower(1);
+        runtime.reset();
+        while (opModeIsActive() && (runtime.seconds() < 0.85)) {
+            telemetry.addData("Path", "Leg 1: %2.5f S Elapsed; Left", runtime.seconds());
+            telemetry.update();
+        }
+        robot.FLMotor.setPower(0);
+        robot.FRMotor.setPower(0);
+        robot.BLMotor.setPower(0);
+        robot.BRMotor.setPower(0);
+        sleep(1000);
+
+        // Step 2:  Forward for 1.4 seconds
+        robot.flap.setPower(0.3);
+        robot.FLMotor.setPower(1);
+        robot.FRMotor.setPower(1);
+        robot.BLMotor.setPower(1);
+        robot.BRMotor.setPower(1);
+        runtime.reset();
+        while (opModeIsActive() && (runtime.seconds() < 1.3)) {
+            telemetry.addData("Path", "Leg 2: %2.5f S Elapsed; Left", runtime.seconds());
+            telemetry.update();
+        }
+        robot.FLMotor.setPower(0);
+        robot.FRMotor.setPower(0);
+        robot.BLMotor.setPower(0);
+        robot.BRMotor.setPower(0);
+        sleep(1000);
+
+        // Step 3:  Turn for 0.55 seconds
+        robot.flap.setPower(0.3);
+        robot.FLMotor.setPower(1);
+        robot.FRMotor.setPower(-1);
+        robot.BLMotor.setPower(1);
+        robot.BRMotor.setPower(-1);
+        runtime.reset();
+        while (opModeIsActive() && (runtime.seconds() < 0.6)) {
+            telemetry.addData("Path", "Leg 3: %2.5f S Elapsed; Right", runtime.seconds());
+            telemetry.update();
+        }
+        robot.FLMotor.setPower(0);
+        robot.FRMotor.setPower(0);
+        robot.BLMotor.setPower(0);
+        robot.BRMotor.setPower(0);
+        sleep(1000);
+
+        float hsvValues[] = {0F, 0F, 0F};
+
+        final double SCALE_FACTOR = 255;
+
+        int relativeLayoutId = hardwareMap.appContext.getResources().getIdentifier("RelativeLayout", "id", hardwareMap.appContext.getPackageName());
+        final View relativeLayout = ((Activity) hardwareMap.appContext).findViewById(relativeLayoutId);
+
+        Color.RGBToHSV((int) (robot.sensorColor.red() * SCALE_FACTOR),
+                (int) (robot.sensorColor.green() * SCALE_FACTOR),
+                (int) (robot.sensorColor.blue() * SCALE_FACTOR),
+                hsvValues);
+
+        // Step 4:  Forward for 1 seconds
+        robot.flap.setPower(0.3);
+        robot.FLMotor.setPower(1);
+        robot.FRMotor.setPower(1);
+        robot.BLMotor.setPower(1);
+        robot.BRMotor.setPower(1);
+        runtime.reset();
+        while (opModeIsActive() && (runtime.seconds() < 1) && ((hsvValues[0] > 50 && hsvValues[0] < 210) || (hsvValues[0] > 240))) {
+            Color.RGBToHSV((int) (robot.sensorColor.red() * SCALE_FACTOR),
+                    (int) (robot.sensorColor.green() * SCALE_FACTOR),
+                    (int) (robot.sensorColor.blue() * SCALE_FACTOR),
+                    hsvValues);
+            telemetry.addData("Path", "Leg 4: %2.5f S Elapsed; Left", hsvValues[0]);
+            telemetry.update();
+        }
+        robot.FLMotor.setPower(0);
+        robot.FRMotor.setPower(0);
+        robot.BLMotor.setPower(0);
+        robot.BRMotor.setPower(0);
+        sleep(1000);
+
+        // Step 5:  Flap down
+        robot.flap.setPower(-0.5);
+        runtime.reset();
+        while (opModeIsActive() && (runtime.seconds() < 1)) {
+            telemetry.addData("Path", "Leg 5: %2.5f S Elapsed; Left", hsvValues[0]);
+            telemetry.update();
+        }
+        robot.flap.setPower(0);
+        sleep(1000);
+
+        // Step 6:  Team marker out
+        robot.sweep.setPower(-1);
+        runtime.reset();
+        while (opModeIsActive() && (runtime.seconds() < 0.3)) {
+            telemetry.addData("Path", "Leg 6: %2.5f S Elapsed; Left", runtime.seconds());
+            telemetry.update();
+        }
+        robot.sweep.setPower(0);
+        sleep(1000);
+
+        // Step 7:  Flap up
+        robot.flap.setPower(1);
+        runtime.reset();
+        while (opModeIsActive() && (runtime.seconds() < 0.5)) {
+            telemetry.addData("Path", "Leg 7: %2.5f S Elapsed; Left", runtime.seconds());
+            telemetry.update();
+        }
+        robot.flap.setPower(0);
+        sleep(1000);
+
+        Rev2mDistanceSensor sensorTimeOfFlight = (Rev2mDistanceSensor)robot.sensorRange;
+    }
+
+    private void right() {
+        // Step 1:  Turn for 0.35 seconds
+        robot.flap.setPower(0.5);
+        robot.FLMotor.setPower(-1);
+        robot.FRMotor.setPower(1);
+        robot.BLMotor.setPower(-1);
+        robot.BRMotor.setPower(1);
+        runtime.reset();
+        while (opModeIsActive() && (runtime.seconds() < 0.35)) {
+            telemetry.addData("Path", "Leg 2: %2.5f S Elapsed; Right", runtime.seconds());
+            telemetry.update();
+        }
+        robot.FLMotor.setPower(0);
+        robot.FRMotor.setPower(0);
+        robot.BLMotor.setPower(0);
+        robot.BRMotor.setPower(0);
+        sleep(1000);
+
+        // Step 2:  Forward for 1.7 seconds
+        robot.flap.setPower(0.3);
+        robot.FLMotor.setPower(1);
+        robot.FRMotor.setPower(1);
+        robot.BLMotor.setPower(1);
+        robot.BRMotor.setPower(1);
+        runtime.reset();
+        while (opModeIsActive() && (runtime.seconds() < 1.4)) {
+            telemetry.addData("Path", "Leg 2: %2.5f S Elapsed; Right", runtime.seconds());
+            telemetry.update();
+        }
+        robot.FLMotor.setPower(0);
+        robot.FRMotor.setPower(0);
+        robot.BLMotor.setPower(0);
+        robot.BRMotor.setPower(0);
+        sleep(1000);
+
+        // Step 3:  Turn for 0.55 seconds
+        robot.flap.setPower(0.3);
+        robot.FLMotor.setPower(-1);
+        robot.FRMotor.setPower(1);
+        robot.BLMotor.setPower(-1);
+        robot.BRMotor.setPower(1);
+        runtime.reset();
+        while (opModeIsActive() && (runtime.seconds() < 0.55)) {
+            telemetry.addData("Path", "Leg 3: %2.5f S Elapsed; Right", runtime.seconds());
+            telemetry.update();
+        }
+        robot.FLMotor.setPower(0);
+        robot.FRMotor.setPower(0);
+        robot.BLMotor.setPower(0);
+        robot.BRMotor.setPower(0);
+        sleep(1000);
+
+        float hsvValues[] = {0F, 0F, 0F};
+
+        final double SCALE_FACTOR = 255;
+
+        int relativeLayoutId = hardwareMap.appContext.getResources().getIdentifier("RelativeLayout", "id", hardwareMap.appContext.getPackageName());
+        final View relativeLayout = ((Activity) hardwareMap.appContext).findViewById(relativeLayoutId);
+
+        Color.RGBToHSV((int) (robot.sensorColor.red() * SCALE_FACTOR),
+                (int) (robot.sensorColor.green() * SCALE_FACTOR),
+                (int) (robot.sensorColor.blue() * SCALE_FACTOR),
+                hsvValues);
+
+        // Step 4:  Forward for 1 seconds
+        robot.flap.setPower(0.3);
+        robot.FLMotor.setPower(1);
+        robot.FRMotor.setPower(1);
+        robot.BLMotor.setPower(1);
+        robot.BRMotor.setPower(1);
+        runtime.reset();
+        while (opModeIsActive() && (runtime.seconds() < 1) && ((hsvValues[0] > 50 && hsvValues[0] < 210) || (hsvValues[0] > 240))) {
+            Color.RGBToHSV((int) (robot.sensorColor.red() * SCALE_FACTOR),
+                    (int) (robot.sensorColor.green() * SCALE_FACTOR),
+                    (int) (robot.sensorColor.blue() * SCALE_FACTOR),
+                    hsvValues);
+            telemetry.addData("Path", "Leg 4: %2.5f S Elapsed; Right", runtime.seconds());
+            telemetry.update();
+        }
+        robot.FLMotor.setPower(0);
+        robot.FRMotor.setPower(0);
+        robot.BLMotor.setPower(0);
+        robot.BRMotor.setPower(0);
+        sleep(1000);
+
+        // Step 5:  Flap down
+        robot.flap.setPower(-0.5);
+        runtime.reset();
+        while (opModeIsActive() && (runtime.seconds() < 1)) {
+            telemetry.addData("Path", "Leg 5: %2.5f S Elapsed; Center", runtime.seconds());
+            telemetry.update();
+        }
+        robot.flap.setPower(0);
+        sleep(1000);
+
+        // Step 6:  Team marker out
+        robot.sweep.setPower(-1);
+        runtime.reset();
+        while (opModeIsActive() && (runtime.seconds() < 0.3)) {
+            telemetry.addData("Path", "Leg 6: %2.5f S Elapsed; Center", runtime.seconds());
+            telemetry.update();
+        }
+        robot.sweep.setPower(0);
+        sleep(1000);
+
+        // Step 7:  Flap up
+        robot.flap.setPower(1);
+        runtime.reset();
+        while (opModeIsActive() && (runtime.seconds() < 0.5)) {
+            telemetry.addData("Path", "Leg 7: %2.5f S Elapsed; Center", runtime.seconds());
+            telemetry.update();
+        }
+        robot.flap.setPower(0);
+        sleep(1000);
+    }
+}
